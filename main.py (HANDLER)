@@ -1,0 +1,179 @@
+# THIS CODE IS USABLE FOR EVERYONE
+# REMINDER: THIS CODE MAY BROKE IF COPY PASTED
+# SO USE THIS AS REFERENCE ONLY, WRITE YOUR OWN
+
+class ShopSelectView(discord.ui.View):
+    def __init__(self, ctx):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+    
+    @discord.ui.select(
+        placeholder="Pilih gelar yang mau dibeli...",
+        options=[
+            discord.SelectOption(
+                label="Royal (3 hari) - 300 coins", 
+                value="royal", 
+                emoji="👑"
+            ),
+            discord.SelectOption(
+                label="Star Student (30d) - 800 coins", 
+                value="starstudent", 
+                emoji="⭐"
+            ),
+            discord.SelectOption(
+                label="Bully (30d) - 800 coins", 
+                value="bully", 
+                emoji="💢"
+            )
+            # ADD MORE HERE, DONT FORGET THE COMA
+        ]
+    )
+    async def select_item(self, interaction: discord.Interaction, select: discord.ui.Select):
+        result = await buy_item(interaction, select.values[0], interaction.user)
+        
+        if isinstance(result, str):
+            await interaction.response.send_message(result, ephemeral=True)
+        else:
+            await interaction.response.edit_message(embed=result, view=None)
+
+# BUY ITEM HANDLER//LOGIC, WITHOUT THIS CODE YOU CAN'T SELL SHITS
+async def buy_item(ctx_or_interaction, item_name: str, buyer: discord.Member):
+    user_id = str(buyer.id)
+    
+    # 1. CHECK IF IT'S A VALID ITEM LISTED
+    if item_name not in SHOP_ITEMS:
+        return ctx_or_interaction.send(f"❌ Item `{item_name}` tidak ditemukan!")
+        
+
+    # DEFINE ITEM, NOW IT USEABLE
+    item = SHOP_ITEMS[item_name]
+    
+    # 2. CHECK COINS
+    # Pastikan data user ada di database sementara
+    if user_id not in user_coins:
+        user_coins[user_id] = {'coins': 0}
+        
+    coins = user_coins[user_id].get('coins', 0)
+    
+    if coins < item['price']:
+        return f"💸 Coins kurang!\nHarga: `{item['price']:,}`\nCoins: `{coins:,}`"
+    
+    # 3. PAYMENT HANDLER
+    user_coins[user_id]['coins'] -= item['price']
+    save_gengsi_data(user_coins, side_points)
+    
+    # 4. GIVE ROLE
+    role = discord.utils.get(ctx_or_interaction.guild.roles, id=item['role_id'])
+    expire_time = 0 # Inisialisasi awal
+    
+    if role:
+        await buyer.add_roles(role)
+    if not item.get('permanent', False):
+        duration = item.get('duration', 0)
+        expire_time = get_wib_datetime().timestamp() + duration
+        
+        temp_roles.setdefault(user_id, {})[str(item['role_id'])] = expire_time
+        save_temp_roles(temp_roles)
+
+    # 5. EMBED SUCCEED
+    embed = discord.Embed(color=0xFFD700)
+    embed.set_author(
+        name=f"Transaksi {buyer.display_name}!", 
+        icon_url=buyer.display_avatar.url
+    )
+
+    # TAKING DESCRIPTION, ITEM LOGO WE DEFINED ON SHOP_ITEM
+    logo = item.get('logo')
+    desc = item.get('description', 'No description')
+    
+    embed.add_field( # CHANGEABLE
+        name=f"{logo} {desc}", 
+        value="✨ **Pembelian sukses!**", 
+        inline=False
+    )
+
+    # TRANSACTION EMBED - INFO ( CHANGEABLE )
+    info_fields = [
+        ["👤 **NAME :**", f"{buyer.mention}"],
+        ["💰 **PRICE :**", f"{item['price']:,} coins"],
+    ]
+
+    if item.get('permanent'):
+        info_fields.append(["⏰ **DURATION**", "PERMANENT 👑"])
+    else:
+        # USING EXPIRE_TIME WE COUNTED EARLIER
+        info_fields.append(["⏰ **EXPIRE :**", f"<t:{int(expire_time)}:R>"])
+
+    for name, value in info_fields:
+        embed.add_field(name=name, value=value, inline=True)
+
+    embed.set_footer(
+        text=f"Sisa Balance: {user_coins[user_id]['coins']:,} 🪙"
+    )
+    return embed # GIVE BACK THE EMBED
+  
+# WITHOUT THIS CODE, YOU CAN'T SELL SHITS EITHER, ALL 3 CODES ARE MEANT TO BE WORKING TOGETHER!!!
+SHOP_ITEMS = {
+    "royal": { # ALL THEESE DOWN ARE CHANGEABLE
+        "role_id": 1459467014556090460,  # CHANGE THIS OTHERWISE IT CAN'T ASSIGN YOU ROLES
+        "permanent": False, # CHANGE TO TRUE IF YOU WANT IT TO BE LIFETIME
+        "price": 300, # CHEAP YEA?
+        "duration": 5 * 24 * 3600,  # CHANGE THE FIRST NUMBER (5) TO CHANGE DAY DURATION .e.g,, 10 * 24 * 3600
+        "description": "Royal Role (5 days)", # THIS WILL APPEAR AS ROLE TITLE ON SHOP LIST
+        "logo": "<:royalcrownn:1459468943910768670>" # YOUR ROLE ICON
+    },
+    "starstudent": {
+         "role_id": 1459581306458341711,
+         "price": 800,
+         "permanent": False,
+         "duration": 30 * 24 * 3600,
+         "description": "Star Student Role (30 days)",
+         "logo": "<:starsss:1459468520491450389>"
+    },
+    "bully": {
+    "role_id": 1459581809934336061,
+    "price": 800,
+    "permanent": False,
+    "duration": 30 * 24 * 3600,
+    "description": "Bully Role (30 days)",
+    "logo": "<:angry:1459468117741670400>"
+    }
+    # ADD MORE SHITS YOU WANNA SELL HERE "booster": {"role_id": 12345, "price": 1000, ...}
+}
+
+def load_shop_data():
+    if SHOP_FILE.exists():
+        try:
+            with open(SHOP_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            print("Error loading shop")
+    return {}
+
+def save_shop_data(purchases):
+    try:
+        with open(SHOP_FILE, 'w', encoding='utf-8') as f:
+            json.dump(purchases, f)
+    except Exception as e:
+        print(f"Save shop error: {e}")
+
+def load_temp_roles():
+    if TEMP_ROLES_FILE.exists():
+        try:
+            with open(TEMP_ROLES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            print("Error loading temp roles")
+    return {}
+
+def save_temp_roles(temp_roles):
+    try:
+        with open(TEMP_ROLES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(temp_roles, f)
+    except Exception as e:
+        print(f"Save temp roles error: {e}")
+
+# THIS FILE ARE REVERSED//UPSIDE DOWN!
+# TO PREVENT PEOPLE FROM COPY PASTING WITHOUT LEARNING
+# THE RIGHT PLACING IS = 1. SHOP_ITEM, 2. BUY_ITEM, 3. SHOP CLASS
+# I DON'T SHARE THE COMMAND, MAKE YOUR OWN (IT'S A CHALLENGE)
