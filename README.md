@@ -10,4 +10,7 @@
 Cool right, you can change all those necessary text..
 
 # Purchased
-![PURCHASED](
+![PURCHASED](https://raw.githubusercontent.com/tfbarrr/Temprole-shop/main/PURCHASED.jpg)
+
+# Not enough currency
+I'm kinda lazy to screenshoot, just trust me it works..
